@@ -39,9 +39,7 @@ class Poller : noncopyable
 
   /// Polls the I/O events.
   /// Must be called in the loop thread.
-  // timeouts为epoll阻塞所用的时间
-  // activechannels是一个存放channel指针的vector
-  // 等价于epoll_wait
+  // 等价于epoll_wait（timeouts为poller阻塞的时间，activechannels是一个存放channel指针的vector）
   virtual Timestamp poll(int timeoutMs, ChannelList* activeChannels) = 0;
 
   /// Changes the interested I/O events.
@@ -52,6 +50,7 @@ class Poller : noncopyable
   /// Must be called in the loop thread.
   virtual void removeChannel(Channel* channel) = 0;
 
+  // 判断channel是否在epoll中
   virtual bool hasChannel(Channel* channel) const;
 
   static Poller* newDefaultPoller(EventLoop* loop);
@@ -62,6 +61,7 @@ class Poller : noncopyable
   }
 
  protected:
+  // 为什么用map：能快速找到是否有channel
   typedef std::map<int, Channel*> ChannelMap;
   // 一个fd和channel映射的map
   ChannelMap channels_;

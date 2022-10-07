@@ -52,7 +52,7 @@ struct stCoRoutineEnv_t
 {
 	stCoRoutine_t *pCallStack[ 128 ];
 	int iCallStackSize;
-	stCoEpoll_t *pEpoll;
+	stCoEpoll_t *pEpoll;	//	epoll事件循环
 
 	//for copy stack log lastco and nextco
 	stCoRoutine_t* pending_co;
@@ -738,8 +738,10 @@ static short EpollEvent2Poll( uint32_t events )
 	return e;
 }
 
+// 当前thread的上下文（__thread代表是每个thread独有的）
 static __thread stCoRoutineEnv_t* gCoEnvPerThread = NULL;
 
+// 初始化当前thread的上下文
 void co_init_curr_thread_env()
 {
 	gCoEnvPerThread = (stCoRoutineEnv_t*)calloc( 1, sizeof(stCoRoutineEnv_t) );
@@ -759,6 +761,8 @@ void co_init_curr_thread_env()
 	stCoEpoll_t *ev = AllocEpoll();
 	SetEpoll( env,ev );
 }
+
+// 获取当前线程的上下文
 stCoRoutineEnv_t *co_get_curr_thread_env()
 {
 	return gCoEnvPerThread;
@@ -875,6 +879,7 @@ void OnCoroutineEvent( stTimeoutItem_t * ap )
 }
 
 
+// epoll_create
 stCoEpoll_t *AllocEpoll()
 {
 	stCoEpoll_t *ctx = (stCoEpoll_t*)calloc( 1,sizeof(stCoEpoll_t) );
@@ -1033,6 +1038,7 @@ int	co_poll( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeout_ms )
 	return co_poll_inner(ctx, fds, nfds, timeout_ms, NULL);
 }
 
+// 将生成好的epoll放到stcoroutineenv_t中
 void SetEpoll( stCoRoutineEnv_t *env,stCoEpoll_t *ev )
 {
 	env->pEpoll = ev;

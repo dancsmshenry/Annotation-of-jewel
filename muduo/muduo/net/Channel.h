@@ -36,11 +36,11 @@ class Channel : noncopyable
   typedef std::function<void()> EventCallback;
   typedef std::function<void(Timestamp)> ReadEventCallback;
 
-  // 归属于哪一个loop，监听哪一个fd
+  // 对应的loop和fd
   Channel(EventLoop* loop, int fd);
   ~Channel();
 
-  // 处理fd上的事件（会被eventloop调用）
+  // 处理channel上的事件（对外提供结构给eventloop使用）
   void handleEvent(Timestamp receiveTime);
   void setReadCallback(ReadEventCallback cb)
   { readCallback_ = std::move(cb); }
@@ -57,13 +57,11 @@ class Channel : noncopyable
 
   int fd() const { return fd_; }
   int events() const { return events_; }
-  // 设定发生事件的类型
   void set_revents(int revt) { revents_ = revt; } // used by pollers
   // int revents() const { return revents_; }
-  // 表示当前fd对任何事件都不感兴趣
   bool isNoneEvent() const { return events_ == kNoneEvent; }
 
-  // 设置fd感兴趣的事件，并更新
+  // 设置channel关注的事件
 
   void enableReading() { events_ |= kReadEvent; update(); }
   void disableReading() { events_ &= ~kReadEvent; update(); }
@@ -88,43 +86,47 @@ class Channel : noncopyable
   void doNotLogHup() { logHup_ = false; }
 
   EventLoop* ownerLoop() { return loop_; }
-  // 把当前channel从loop中移除
+  // 把channel从loop中移除
   void remove();
 
  private:
   static string eventsToString(int fd, int ev);
 
-  // 把更新后的channel重新放回loop
+  // 把channel放入loop中（或是把修改后的channel放入loop中）
   void update();
-  // 真正处理event的函数（通过位运算判断要调用哪一个事件函数）
+  // 真正处理channel上事件的函数（通过位运算switch）
   void handleEventWithGuard(Timestamp receiveTime);
 
   static const int kNoneEvent;
   static const int kReadEvent;
   static const int kWriteEvent;
 
-  // channel隶属于哪一个事件循环
+  // channel对应的loop
   EventLoop* loop_;
-  // channel管理的文件描述符
+  // channel对应的fd
   const int  fd_;
-  // fd感兴趣的事件类型的集合
+  // 关注的事件（默认是kNoneEvent，kNoneEvent表示不关注，kReadEvent表示关注读事件，kWriteEvent表示关注写事件）
   int        events_;
-  // fd上实际发生的事件的集合
+  // 实际发生的事件
   int        revents_; // it's the received event types of epoll or poll
-  // 表示当前fd在poller中的状态（-1表示还没有被添入到poll中，1表示已经被加入了，2表示被删除了）
+  // 当前的状态（默认是-1，-1表示还没有被放入到poll中，1表示已经放入，2表示被删除）
   int        index_;
-  // 用于表示是否要写关于pollup的日志
+  // 表示是否要写关于pollup的日志（默认是true）
   bool       logHup_;
 
   std::weak_ptr<void> tie_;
   bool tied_;
-  // 标记当前是否在处理fd上发生的事件
+  // 是否正在处理fd上发生的事件（默认是false）
   bool eventHandling_;
-  // 标记当前的channel是否被加入到eventloop中
+  // channel是否放入loop中（默认是false）
   bool addedToLoop_;
+  // 处理读事件
   ReadEventCallback readCallback_;
+  // 处理写事件
   EventCallback writeCallback_;
+  // 处理fd的close
   EventCallback closeCallback_;
+  // 处理error
   EventCallback errorCallback_;
 };
 

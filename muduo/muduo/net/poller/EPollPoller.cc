@@ -31,9 +31,9 @@ static_assert(EPOLLHUP == POLLHUP,      "epoll uses same flag values as poll");
 
 namespace
 {
-const int kNew = -1;// 表示当前的channel还没有加入到epollfd中
-const int kAdded = 1;// 表示当前的channel已经被加入到epollfd中
-const int kDeleted = 2;// 表示当前的channel已经从epollfd中删除（但还是在channels_）
+const int kNew = -1;// channel没有加入到epoll中
+const int kAdded = 1;// channel已经加入到epoll中
+const int kDeleted = 2;// channel已经从epoll中删除（但还是在channels_）
 }
 
 EPollPoller::EPollPoller(EventLoop* loop)
@@ -42,14 +42,14 @@ EPollPoller::EPollPoller(EventLoop* loop)
     events_(kInitEventListSize)
 {
   if (epollfd_ < 0)
-  {// 创建epollfd失败
+  {// epoll error
     LOG_SYSFATAL << "EPollPoller::EPollPoller";
   }
 }
 
 EPollPoller::~EPollPoller()
 {
-  // 关闭epollfd
+  // close epollfd
   ::close(epollfd_);
 }
 
@@ -71,7 +71,7 @@ Timestamp EPollPoller::poll(int timeoutMs, ChannelList* activeChannels)
     fillActiveChannels(numEvents, activeChannels);
     if (implicit_cast<size_t>(numEvents) == events_.size())
     {// 如果events_已经装满了（是指达到已有的size了），就对已有的eventlist进行两倍扩容
-     // 这里要注重的细节就是，删除fd的时候，是没有在events_上操作的 
+     // 小细节：删除fd的时候，是没有在events_上操作的 
       events_.resize(events_.size()*2);
     }
   }
@@ -97,7 +97,8 @@ void EPollPoller::fillActiveChannels(int numEvents,
   assert(implicit_cast<size_t>(numEvents) <= events_.size());
   for (int i = 0; i < numEvents; ++i)
   {
-    Channel* channel = static_cast<Channel*>(events_[i].data.ptr); // 原来它这里是把channel放到了epollfd的data中
+    // 这里是把channel放到epoll_event的data中
+    Channel* channel = static_cast<Channel*>(events_[i].data.ptr);
 #ifndef NDEBUG // 用于屏蔽assert
     int fd = channel->fd();
     ChannelMap::const_iterator it = channels_.find(fd);
@@ -116,16 +117,16 @@ void EPollPoller::updateChannel(Channel* channel)
   LOG_TRACE << "fd = " << channel->fd()
     << " events = " << channel->events() << " index = " << index;
   if (index == kNew || index == kDeleted)
-  {
+  {// 新的channel，或者之前删除掉对所有事件都不感兴趣的channel又重新放进来
     // a new one, add with EPOLL_CTL_ADD
     int fd = channel->fd();
     if (index == kNew)
-    {// 当前的channel是一个未曾加入到poller的channel
+    {// channel此前未放入到poller中
       assert(channels_.find(fd) == channels_.end());
       channels_[fd] = channel;
     }
     else
-    {// 当前channel是从epollfd中删除了（但是是已经放入到channels_中的）
+    {// channel在poller中，但是因为对所有事件都不感兴趣，所以从epollfd中移除了
       assert(channels_.find(fd) != channels_.end());
       assert(channels_[fd] == channel);
     }
@@ -163,9 +164,9 @@ void EPollPoller::removeChannel(Channel* channel)
   // 要保证要移除的channel不对任何事件感兴趣
   assert(channel->isNoneEvent());
   int index = channel->index();
-  // 要保证当前要移除的channel是在channels_中的（否则限免erase就会报错）
+  // 要保证当前要移除的channel是在channels_中的（否则后面的erase就会报错）
   assert(index == kAdded || index == kDeleted);
-  size_t n = channels_.erase(fd); //  删除channel
+  size_t n = channels_.erase(fd); //  从channels_中删除channel
   (void)n;
   assert(n == 1);
 
@@ -178,9 +179,9 @@ void EPollPoller::removeChannel(Channel* channel)
 
 void EPollPoller::update(int operation, Channel* channel)
 {
+  // 组装epoll_event
   struct epoll_event event;
   memZero(&event, sizeof event);
-  // 组装epoll_event
   event.events = channel->events();
   event.data.ptr = channel;
   int fd = channel->fd();
@@ -191,7 +192,7 @@ void EPollPoller::update(int operation, Channel* channel)
   // EPOLL_CTL_MOD表明修改epoll中的fd
   // EPOLL_CTL_DEL表明从epoll中删除该fd
   if (::epoll_ctl(epollfd_, operation, fd, &event) < 0)
-  {// 返回-1，表示修改channel的状态失败
+  {// -1，发生了error
     if (operation == EPOLL_CTL_DEL)
     {
       LOG_SYSERR << "epoll_ctl op =" << operationToString(operation) << " fd =" << fd;

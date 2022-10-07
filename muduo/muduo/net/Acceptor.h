@@ -61,7 +61,7 @@ class Acceptor : noncopyable
   NewConnectionCallback newConnectionCallback_;
   // 用于标记当前的acceptor是否进入了listening状态
   bool listening_;
-  // 一个fd，用于解决文件描述符不够的问题
+  // fd，用于解决文件描述符不够的问题
   int idleFd_;
 };
 

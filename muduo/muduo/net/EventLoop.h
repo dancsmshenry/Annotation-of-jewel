@@ -49,14 +49,14 @@ class EventLoop : noncopyable
   ///
   /// Must be called in the same thread as creation of the object.
   ///
-  // 开始事件循环
+  // 开始loop
   void loop();
 
   /// Quits loop.
   ///
   /// This is not 100% thread safe, if you call through a raw pointer,
   /// better to call through shared_ptr<EventLoop> for 100% safety.
-  // 退出事件循环
+  // 退出loop
   void quit();
 
   ///
@@ -72,7 +72,7 @@ class EventLoop : noncopyable
   /// It wakes up the loop, and run the cb.
   /// If in the same loop thread, cb is run within the function.
   /// Safe to call from other threads.
-  // 让loop执行callback函数（如果当前线程不是eventloop所在的线程，就调用queueinloop）
+  // 执行cb函数（如果当前线程不是eventloop所在的线程，就调用queueinloop）
   void runInLoop(Functor cb);
   /// Queues callback in the loop thread.
   /// Runs after finish pooling.
@@ -80,7 +80,6 @@ class EventLoop : noncopyable
   // 将callback放入queue中
   void queueInLoop(Functor cb);
 
-  // 返回当前消费队列的长度
   size_t queueSize() const;
 
   // timers
@@ -108,14 +107,15 @@ class EventLoop : noncopyable
 
   // 触发可写事件，唤醒loop
   void wakeup();
-  // 更新channel
+  // 添加（更新）channel
   void updateChannel(Channel* channel);
-  // 删除channel
+  // 移除channel
   void removeChannel(Channel* channel);
-  // 判断给定的channel是否在当前的eventloop的poller中
+  // 判断给定channel是否在当前loop中
   bool hasChannel(Channel* channel);
 
   // pid_t threadId() const { return threadId_; }
+  // 判断当前thread和loop是否匹配
   void assertInLoopThread()
   {
     if (!isInLoopThread())
@@ -137,47 +137,50 @@ class EventLoop : noncopyable
   boost::any* getMutableContext()
   { return &context_; }
 
+  // 获取当前thread的eventloop
   static EventLoop* getEventLoopOfCurrentThread();
 
  private:
   void abortNotInLoopThread();
-  // 当wakeupfd可写时，就用该函数处理
+  // 处理wakefd中的可读事件
   void handleRead();  // waked up
-  // 处理pendingFunctors_中的回调函数
+  // 消费vector中的callback
   void doPendingFunctors();
 
   void printActiveChannels() const; // DEBUG
 
   typedef std::vector<Channel*> ChannelList;
 
-  // 标记当前eventloop是否在loop中
+  // eventloop是否在loop()（默认是false）
   bool looping_;
-  // 标记当前eventloop是否退出loop
+  // eventloop是否退出loop()（默认是false）
   std::atomic<bool> quit_;
-  // 标记此时是否在处理poller得到的活跃事件
+  // eventloop是否在处理fd（默认是false）
   bool eventHandling_;
-  // 标记当前的eventloop是否在执行doPendingFunctors
+  // eventloop是否在执行doPendingFunctors()
   bool callingPendingFunctors_;
-  // 记录loop中while的次数
+  // loop()中while的次数
   int64_t iteration_;
+  // 当前thread的id
   const pid_t threadId_;
+  // 调用poller后返回的time
   Timestamp pollReturnTime_;
-  // 指向poller的指针
+  // 持有poller的ptr
   std::unique_ptr<Poller> poller_;
-  // 指向timequeue的指针
+  // 持有timequeue的ptr
   std::unique_ptr<TimerQueue> timerQueue_;
-  // fd，用于创造可读事件，从而唤醒poller
+  // fd（用于创造可读事件唤醒loop）
   int wakeupFd_;
   // unlike in TimerQueue, which is an internal class,
   // we don't expose Channel to client.
-  // 上述可读事件的channel
+  // wakeupFd_对应的channel
   std::unique_ptr<Channel> wakeupChannel_;
   boost::any context_;
 
   // scratch variables
-  // 存放活动的事件
+  // 存放活动的事件（vector）
   ChannelList activeChannels_;
-  // 当前活跃的channel，是指此时loop中正在处理的channel
+  // loop正在处理的channle
   Channel* currentActiveChannel_;
 
   mutable MutexLock mutex_;

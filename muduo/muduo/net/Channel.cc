@@ -39,7 +39,7 @@ Channel::~Channel()
   assert(!eventHandling_);
   assert(!addedToLoop_);
   if (loop_->isInLoopThread())
-  {
+  {// 析构之前要判断channel是否从loop中移除
     assert(!loop_->hasChannel(this));
   }
 }

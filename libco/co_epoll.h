@@ -30,6 +30,7 @@
 
 #include <sys/epoll.h>
 
+// 封装好的epoll event
 struct co_epoll_res
 {
 	int size;

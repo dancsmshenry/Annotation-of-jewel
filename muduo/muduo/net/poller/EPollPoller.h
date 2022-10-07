@@ -31,15 +31,15 @@ class EPollPoller : public Poller
   EPollPoller(EventLoop* loop);
   ~EPollPoller() override;
 
-  // 等价于epoll_wait，timeouts表示epoll的阻塞时间，activechannels是一个存放channel指针的vector
+  // 等价于epoll_wait（timeouts为poller阻塞的时间，activechannels是一个存放channel指针的vector）
   Timestamp poll(int timeoutMs, ChannelList* activeChannels) override;
-  // 插入或更新channel
+  // 添加（更新）channel
   void updateChannel(Channel* channel) override;
   // 移除channel
   void removeChannel(Channel* channel) override;
 
  private:
-  // 生成的存放epoll_event的数组
+  // events_数组的大小
   static const int kInitEventListSize = 16;
 
   // 根据状态转换为对应的字符串
@@ -48,14 +48,14 @@ class EPollPoller : public Poller
   // 将epoll_wait返回的事件放到activechannels中
   void fillActiveChannels(int numEvents,
                           ChannelList* activeChannels) const;
-  // 将channel中fd的最新状态同步到epollfd中
+  // 等价于epoll_ctl
   void update(int operation, Channel* channel);
 
   typedef std::vector<struct epoll_event> EventList;
 
-  // 用epoll_create生成的epollfd
+  // epollfd
   int epollfd_;
-  // 用一个数组存放epoll_wait返回的事件数组
+  // 数组，存放epoll_wait返回的事件
   EventList events_;
 };
 

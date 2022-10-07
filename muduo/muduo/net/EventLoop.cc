@@ -26,7 +26,7 @@ using namespace muduo::net;
 
 namespace
 {
-// 每个线程都只能有一个eventloop
+// 每个thread中只能有一个eventloop
 __thread EventLoop* t_loopInThisThread = 0;
 
 // poller阻塞的时间
@@ -87,7 +87,7 @@ EventLoop::EventLoop()
   {
     t_loopInThisThread = this;
   }
-  // set可读事件到wakeupchannel中
+  // 设置wakeupfd的可读事件
   wakeupChannel_->setReadCallback(
       std::bind(&EventLoop::handleRead, this));
   // we are always reading the wakeupfd
@@ -99,10 +99,11 @@ EventLoop::~EventLoop()
 {
   LOG_DEBUG << "EventLoop " << this << " of thread " << threadId_
             << " destructs in thread " << CurrentThread::tid();
-  // 把fd对所有的事件都不感兴趣
+  // 设置wakeupfd对所有事件都不感兴趣
   wakeupChannel_->disableAll();
-  // 把fd从poller中移除
+  // 将wakeupfd从poller中移除
   wakeupChannel_->remove();
+  // close wakeupfd
   ::close(wakeupFd_);
   t_loopInThisThread = NULL;
 }
@@ -128,7 +129,7 @@ void EventLoop::loop()
     }
     // TODO sort channel by priority
     eventHandling_ = true;
-    // 执行每个activechannels的event
+    // 处理activechannels的events
     for (Channel* channel : activeChannels_)
     {
       currentActiveChannel_ = channel;
@@ -136,7 +137,7 @@ void EventLoop::loop()
     }
     currentActiveChannel_ = NULL;
     eventHandling_ = false;
-    // 每一轮循环后都会消费pendingFunctors_里的函数
+    // 消费pendingFunctors_中的事件
     doPendingFunctors();
   }
 
@@ -150,8 +151,7 @@ void EventLoop::quit()
   // There is a chance that loop() just executes while(!quit_) and exits,
   // then EventLoop destructs, then we are accessing an invalid object.
   // Can be fixed using mutex_ in both places.
-  // 如果是别的线程，比如用户当前的线程（注意要区分eventloop的线程）
-  // 调用quit，就要立马触发fd，使得eventloop获知quit_的信息
+  // 如果非当前loop对应的thread调用quie，就需要借助wakeup唤醒
   if (!isInLoopThread())
   {
     wakeup();
@@ -161,11 +161,11 @@ void EventLoop::quit()
 void EventLoop::runInLoop(Functor cb)
 {
   if (isInLoopThread())
-  {// 如果当前的loop对应的是当前的thread的话就执行回调函数
+  {// 如果当前的loop对应的thread就是当前thread，直接消费cb
     cb();
   }
   else
-  {// 否则，就把回调函数放到当前loop的queue中，等到loop的时候一同消费
+  {// 否则就把cb到对应loop的queue中，等到loop的时候一同消费
     queueInLoop(std::move(cb));
   }
 }
@@ -173,15 +173,16 @@ void EventLoop::runInLoop(Functor cb)
 void EventLoop::queueInLoop(Functor cb)
 {
   {
-  //  这里加锁是因为可能会有多线程同时往队列中放入事件
+  // 可能出现多线程同时往queue放入cb，因此要上锁
   MutexLockGuard lock(mutex_);
   pendingFunctors_.push_back(std::move(cb));
   }
 
-  // callingPendingFunctors_为false就代表此时还没开始执行doPendingFunctors函数（或者此时是在其他线程向这个loop添加事件，所以要唤醒loop）
+  // 如果当前loop不是在对应thread
+  // 或是说当前没有在执行doPendingFunctors()（可能是在epoll阻塞，或是在处理当前的fd）
   if (!isInLoopThread() || callingPendingFunctors_)
   {
-    // 通过可写事件唤醒loop
+    // 需要触发可读事件唤醒loop
     wakeup();
   }
 }
@@ -226,7 +227,7 @@ void EventLoop::removeChannel(Channel* channel)
   assert(channel->ownerLoop() == this);
   assertInLoopThread();
   if (eventHandling_)
-  {// 有点没看懂这句话是啥意思...
+  {// 防止竞态：一边在loop中处理该事件，另一边又把它移除loop
     assert(currentActiveChannel_ == channel ||
         std::find(activeChannels_.begin(), activeChannels_.end(), channel) == activeChannels_.end());
   }
@@ -250,9 +251,10 @@ void EventLoop::abortNotInLoopThread()
 void EventLoop::wakeup()
 {
   uint64_t one = 1;
+  // 制造可写事件，触发可读事件，唤醒poller
   ssize_t n = sockets::write(wakeupFd_, &one, sizeof one);
   if (n != sizeof one)
-  {
+  {// 发生了error
     LOG_ERROR << "EventLoop::wakeup() writes " << n << " bytes instead of 8";
   }
 }
@@ -260,9 +262,10 @@ void EventLoop::wakeup()
 void EventLoop::handleRead()
 {
   uint64_t one = 1;
+  // 处理wakefd中的可读事件
   ssize_t n = sockets::read(wakeupFd_, &one, sizeof one);
   if (n != sizeof one)
-  {
+  {// 发生了error
     LOG_ERROR << "EventLoop::handleRead() reads " << n << " bytes instead of 8";
   }
 }
@@ -273,7 +276,8 @@ void EventLoop::doPendingFunctors()
   callingPendingFunctors_ = true;
 
   {
-  // 先拿锁，然后交换vector<Functor>（通过作用域减少锁住的范围）
+    // 防止竞态：一边放callback，另一边消费callback
+    // 通过mutex减小被锁住的范围
   MutexLockGuard lock(mutex_);
   functors.swap(pendingFunctors_);
   }

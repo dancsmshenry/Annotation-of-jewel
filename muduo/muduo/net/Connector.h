@@ -27,7 +27,7 @@ class EventLoop;
 
 class Connector : noncopyable,
                   public std::enable_shared_from_this<Connector>
-{
+{ //  系主动发起连接，可以和acceptor一起进行理解
  public:
   typedef std::function<void (int sockfd)> NewConnectionCallback;
 
@@ -59,6 +59,7 @@ class Connector : noncopyable,
   int removeAndResetChannel();
   void resetChannel();
 
+  // 隶属于哪一个eventloop
   EventLoop* loop_;
   InetAddress serverAddr_;
   bool connect_; // atomic
