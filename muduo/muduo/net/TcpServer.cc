@@ -28,10 +28,11 @@ TcpServer::TcpServer(EventLoop* loop,
     name_(nameArg),
     acceptor_(new Acceptor(loop, listenAddr, option == kReusePort)),
     threadPool_(new EventLoopThreadPool(loop, name_)),
-    connectionCallback_(defaultConnectionCallback),
-    messageCallback_(defaultMessageCallback), //  注册回调函数（这里是一个默认的可读回调函数）
+    connectionCallback_(defaultConnectionCallback), //  先放置一个默认的callback
+    messageCallback_(defaultMessageCallback), //  先放置一个默认的callback
     nextConnId_(1)
 {
+  // 设置当有新fd连接时的callback
   acceptor_->setNewConnectionCallback(
       std::bind(&TcpServer::newConnection, this, _1, _2));
 }
@@ -44,8 +45,10 @@ TcpServer::~TcpServer()
   // 释放所有的连接
   for (auto& item : connections_)
   {
+    // 为什么这里还需要把ptr给接过来
+    // 因为后续要在loop中调用callback，所以为了对象被析构，要先接过来
     TcpConnectionPtr conn(item.second);
-    // 因为上面已经把ptr接过去了，所以这里就释放，使得引用指数减一
+    // 因为上面已经把ptr接过去了，所以这里就释放，使得引用指数减一（如果不减一，就会导致后续ptr的引用计数始终大于1，无法释放）
     item.second.reset();
     conn->getLoop()->runInLoop(
       std::bind(&TcpConnection::connectDestroyed, conn));
@@ -60,12 +63,12 @@ void TcpServer::setThreadNum(int numThreads)
 
 void TcpServer::start()
 {
-  if (started_.getAndSet(1) == 0)
+  if (started_.getAndSet(1) == 0) //  将started_设置为1
   {
     threadPool_->start(threadInitCallback_);
 
     assert(!acceptor_->listening());
-    // 调用acceptor中的listen（也明白了runinloop是怎么用的）
+    // 调用acceptor中的listen
     loop_->runInLoop(
         std::bind(&Acceptor::listen, get_pointer(acceptor_)));
   }
@@ -74,7 +77,7 @@ void TcpServer::start()
 void TcpServer::newConnection(int sockfd, const InetAddress& peerAddr)
 {
   loop_->assertInLoopThread();
-  // 从线程池中选择一个eventloop来监听该fd（如果是单reactor，就是本线程了）
+  // 从线程池中选择一个thread来监听该fd（如果是单reactor就是本线程）
   EventLoop* ioLoop = threadPool_->getNextLoop();
   char buf[64];
   snprintf(buf, sizeof buf, "-%s#%d", ipPort_.c_str(), nextConnId_);
@@ -93,12 +96,15 @@ void TcpServer::newConnection(int sockfd, const InetAddress& peerAddr)
                                           sockfd,
                                           localAddr,
                                           peerAddr));
-  // 创建好的connection会放到map中
+  // 将connection放到map中
   connections_[connName] = conn;
-  conn->setConnectionCallback(connectionCallback_);
+
   // 在建立新的连接tcpconnect后，把tcpserver的回调函数注册到连接上
+
+  conn->setConnectionCallback(connectionCallback_);
   conn->setMessageCallback(messageCallback_);
   conn->setWriteCompleteCallback(writeCompleteCallback_);
+  // 发生了close事件，就需要将connection从tcpserver中移除
   conn->setCloseCallback(
       std::bind(&TcpServer::removeConnection, this, _1)); // FIXME: unsafe
   ioLoop->runInLoop(std::bind(&TcpConnection::connectEstablished, conn));

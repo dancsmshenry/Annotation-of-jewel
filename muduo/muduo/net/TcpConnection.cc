@@ -60,11 +60,13 @@ TcpConnection::TcpConnection(EventLoop* loop,
       std::bind(&TcpConnection::handleError, this));
   LOG_DEBUG << "TcpConnection::ctor[" <<  name_ << "] at " << this
             << " fd=" << sockfd;
+  // 开启socket的心跳机制
   socket_->setKeepAlive(true);
 }
 
 TcpConnection::~TcpConnection()
 {
+  // 因为都是smart pointer，所以不需要多余的操作（而且socket_会在析构的时候释放fd）
   LOG_DEBUG << "TcpConnection::dtor[" <<  name_ << "] at " << this
             << " fd=" << channel_->fd()
             << " state=" << stateToString();
@@ -94,11 +96,11 @@ void TcpConnection::send(const StringPiece& message)
   if (state_ == kConnected)
   {
     if (loop_->isInLoopThread())
-    {
+    {// 如果是在当前的loop中，那么就可以直接发送数据
       sendInLoop(message);
     }
     else
-    {
+    {// 否则，就需要注册callback，后续再进行发送
       void (TcpConnection::*fp)(const StringPiece& message) = &TcpConnection::sendInLoop;
       loop_->runInLoop(
           std::bind(fp,
@@ -292,6 +294,7 @@ void TcpConnection::setTcpNoDelay(bool on)
 
 void TcpConnection::startRead()
 {
+   // 注册callback，在callback中stop read（减少了多线程的竞态）
   loop_->runInLoop(std::bind(&TcpConnection::startReadInLoop, this));
 }
 
@@ -307,6 +310,7 @@ void TcpConnection::startReadInLoop()
 
 void TcpConnection::stopRead()
 {
+  // 注册callback，在callback中stop read（减少了多线程的竞态）
   loop_->runInLoop(std::bind(&TcpConnection::stopReadInLoop, this));
 }
 
@@ -314,7 +318,7 @@ void TcpConnection::stopReadInLoop()
 {
   loop_->assertInLoopThread();
   if (reading_ || channel_->isReading())
-  {
+  { //  如果当前connection关注可读事件的话
     channel_->disableReading();
     reading_ = false;
   }
@@ -324,22 +328,26 @@ void TcpConnection::connectEstablished()
 {
   loop_->assertInLoopThread();
   assert(state_ == kConnecting);
-  // 修改connection的状态
+  // 将当前connection设置为kconnected状态
   setState(kConnected);
   channel_->tie(shared_from_this());
+  // 让fd关注可读事件
   channel_->enableReading();
 
+  // 调用自定义的connection callback
   connectionCallback_(shared_from_this());
 }
 
 void TcpConnection::connectDestroyed()
 {
   loop_->assertInLoopThread();
-  if (state_ == kConnected)
+  if (state_ == kConnected) //  如果当前connection被设为kconnected状态
   {
+    // 重置state
     setState(kDisconnected);
+    // 对所有事件都不感兴趣
     channel_->disableAll();
-
+    // 调用自定义的connection callback
     connectionCallback_(shared_from_this());
   }
   channel_->remove();
@@ -349,17 +357,17 @@ void TcpConnection::handleRead(Timestamp receiveTime)
 {
   loop_->assertInLoopThread();
   int savedErrno = 0;
-  // 读入数据到buffer中（将Tcp接收缓冲区数据拷贝到用户定义的缓冲区中）
+  // 读入数据到buffer中（将Tcp接收缓冲区数据拷贝到用户定义的缓冲区中）；会一次性将数据读完
   ssize_t n = inputBuffer_.readFd(channel_->fd(), &savedErrno);
-  if (n > 0) // 如果有数据读入，则调用可读事件的回调函数
+  if (n > 0) // 有数据读入，调用可读事件的callback
   {
     messageCallback_(shared_from_this(), &inputBuffer_, receiveTime);
   }
-  else if (n == 0) // 如果无数据读入，说明客户端关闭
+  else if (n == 0) // 无数据读入（说明client关闭，则close fd）
   {
     handleClose();
   }
-  else // 出现问题
+  else // error
   {
     errno = savedErrno;
     LOG_SYSERR << "TcpConnection::handleRead";
@@ -371,22 +379,22 @@ void TcpConnection::handleWrite()
 {
   loop_->assertInLoopThread();
   if (channel_->isWriting())
-  {
+  {// 当前fd可写（对写事件感兴趣）
     ssize_t n = sockets::write(channel_->fd(),
                                outputBuffer_.peek(),
                                outputBuffer_.readableBytes());
     if (n > 0)
-    {
+    {// n为成功写入数据的长度
       outputBuffer_.retrieve(n);
       if (outputBuffer_.readableBytes() == 0)
-      {
+      {// 数据全部写入，就取消对写事件的关注
         channel_->disableWriting();
         if (writeCompleteCallback_)
         {
           loop_->queueInLoop(std::bind(writeCompleteCallback_, shared_from_this()));
         }
         if (state_ == kDisconnecting)
-        {
+        { //  如果connection被标志位disconnect，则关闭fd的写功能
           shutdownInLoop();
         }
       }
@@ -401,7 +409,7 @@ void TcpConnection::handleWrite()
     }
   }
   else
-  {
+  {// 当前fd不可写（准确来说是当前fd对写事件不敢兴趣）
     LOG_TRACE << "Connection fd = " << channel_->fd()
               << " is down, no more writing";
   }
@@ -413,12 +421,14 @@ void TcpConnection::handleClose()
   LOG_TRACE << "fd = " << channel_->fd() << " state = " << stateToString();
   assert(state_ == kConnected || state_ == kDisconnecting);
   // we don't close fd, leave it to dtor, so we can find leaks easily.
-  // 修改状态
+  // 状态重置为disconnected
   setState(kDisconnected);
-  // 可以理解为将channel从监听器中移除
+  // channel对所有事件都不敢兴趣（避免触发epoll）（可以理解为将channel从监听器中移除）
   channel_->disableAll();
 
+  // 获取当前connection的指针（防止在close的时候connection被析构）
   TcpConnectionPtr guardThis(shared_from_this());
+  // 调用用户自定义的close的处理函数
   connectionCallback_(guardThis);
   // must be the last line
   // 处理tcp连接关闭
@@ -427,6 +437,7 @@ void TcpConnection::handleClose()
 
 void TcpConnection::handleError()
 {
+  // 获取socket的error code
   int err = sockets::getSocketError(channel_->fd());
   LOG_ERROR << "TcpConnection::handleError [" << name_
             << "] - SO_ERROR = " << err << " " << strerror_tl(err);

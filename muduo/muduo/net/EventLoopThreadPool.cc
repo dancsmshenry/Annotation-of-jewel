@@ -27,8 +27,8 @@ EventLoopThreadPool::EventLoopThreadPool(EventLoop* baseLoop, const string& name
 
 EventLoopThreadPool::~EventLoopThreadPool()
 {
-  // Don't delete loop, it's stack variable
-  // 因为都是容器，所以不需要手动析构（而指针的话也不需要，因为baseloop是用户创建的）
+  // Don't delete loop, it's stack variable（而指针的话也不需要，因为baseloop是用户创建的，生命周期由用户控制）
+  // 都是stl容器，不需要手动析构
 }
 
 void EventLoopThreadPool::start(const ThreadInitCallback& cb)
@@ -47,7 +47,7 @@ void EventLoopThreadPool::start(const ThreadInitCallback& cb)
     loops_.push_back(t->startLoop());
   }
   if (numThreads_ == 0 && cb)
-  {
+  {// 只有一个主线程并且有callback
     cb(baseLoop_);
   }
 }

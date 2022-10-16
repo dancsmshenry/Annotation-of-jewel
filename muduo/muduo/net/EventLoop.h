@@ -115,7 +115,7 @@ class EventLoop : noncopyable
   bool hasChannel(Channel* channel);
 
   // pid_t threadId() const { return threadId_; }
-  // 判断当前thread和loop是否匹配
+  // 判断当前loop是否在其对应的thread中
   void assertInLoopThread()
   {
     if (!isInLoopThread())
@@ -167,7 +167,7 @@ class EventLoop : noncopyable
   Timestamp pollReturnTime_;
   // 持有poller的ptr
   std::unique_ptr<Poller> poller_;
-  // 持有timequeue的ptr
+  // 持有timequeue（定时器）的ptr
   std::unique_ptr<TimerQueue> timerQueue_;
   // fd（用于创造可读事件唤醒loop）
   int wakeupFd_;

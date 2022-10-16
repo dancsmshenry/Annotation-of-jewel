@@ -35,6 +35,7 @@ class EventLoopThreadPool : noncopyable
 
   EventLoopThreadPool(EventLoop* baseLoop, const string& nameArg);
   ~EventLoopThreadPool();
+  // 设置threadpool中thread的数量
   void setThreadNum(int numThreads) { numThreads_ = numThreads; }
   // pool开始工作（由tcpserver调用）
   void start(const ThreadInitCallback& cb = ThreadInitCallback());
@@ -59,14 +60,15 @@ class EventLoopThreadPool : noncopyable
 
  private:
 
-  // 主eventloop，这个loop是用户自己构建的哦
+  // 主eventloop
   EventLoop* baseLoop_;
   // pool的名字
   string name_;
-  // 标记是否调用了start
+  // 标记是否调用了start()
   bool started_;
+  // thread的数量
   int numThreads_;
-  // 用于从loops_中选取loop
+  // 用于从loops_中选取loop（用于负载均衡）
   int next_;
   // 存放eventloopthread*的pool
   std::vector<std::unique_ptr<EventLoopThread>> threads_;

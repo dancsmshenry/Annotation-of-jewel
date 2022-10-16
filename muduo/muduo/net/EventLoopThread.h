@@ -35,11 +35,14 @@ class EventLoopThread : noncopyable
  private:
   void threadFunc();
 
+  // 所属的eventloop
   EventLoop* loop_ GUARDED_BY(mutex_);
   bool exiting_;
   Thread thread_;
+  // 辅助条件变量
   MutexLock mutex_;
   Condition cond_ GUARDED_BY(mutex_);
+  // 需要执行的call back
   ThreadInitCallback callback_;
 };
 

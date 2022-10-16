@@ -18,6 +18,7 @@ EventLoopThread::EventLoopThread(const ThreadInitCallback& cb,
   : loop_(NULL),
     exiting_(false),
     thread_(std::bind(&EventLoopThread::threadFunc, this), name),
+    // 多reactor的实现：这里给thread放入的函数时threadFunc（也就是说这里看是执行loop循环）
     mutex_(),
     cond_(mutex_),
     callback_(cb)

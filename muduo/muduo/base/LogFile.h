@@ -22,10 +22,10 @@ class AppendFile;
 class LogFile : noncopyable
 {
  public:
-  LogFile(const string& basename,
-          off_t rollSize,
-          bool threadSafe = true,
-          int flushInterval = 3,
+  LogFile(const string& basename,//     项目的名称
+          off_t rollSize,//     一次最大刷新字节数
+          bool threadSafe = true,       //      是否需要线程安全（多线程读写需要上锁）
+          int flushInterval = 3,        //      隔多少ms刷一次盘
           int checkEveryN = 1024);
   ~LogFile();
 

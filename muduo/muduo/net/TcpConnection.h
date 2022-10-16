@@ -67,13 +67,19 @@ class TcpConnection : noncopyable,
   void send(const StringPiece& message);
   // void send(Buffer&& message); // C++11
   void send(Buffer* message);  // this one will swap data
+  // 将connection设置为kDisconnecting，并关闭fd的写功能
   void shutdown(); // NOT thread safe, no simultaneous calling
   // void shutdownAndForceCloseAfter(double seconds); // NOT thread safe, no simultaneous calling
+  // 强制关闭connetion
   void forceClose();
+  // 过seconds后关闭connection
   void forceCloseWithDelay(double seconds);
+  // 利用传参on来决定是否要用nagle功能
   void setTcpNoDelay(bool on);
   // reading or not
+  // 开启fd的read功能
   void startRead();
+  // 关闭fd的read功能
   void stopRead();
   bool isReading() const { return reading_; }; // NOT thread safe, may race with start/stopReadInLoop
 
@@ -110,55 +116,64 @@ class TcpConnection : noncopyable,
   { closeCallback_ = cb; }
 
   // called when TcpServer accepts a new connection
+  // 建立connection（只会被调用一次）
   void connectEstablished();   // should be called only once
   // called when TcpServer has removed me from its map
+  // 销毁connection（只会被调用一次）
   void connectDestroyed();  // should be called only once
 
  private:
   enum StateE { kDisconnected, kConnecting, kConnected, kDisconnecting };
-  // 负责处理tcp连接的可读事件（将数据读入buffer，并调用messageCallback_）
+  // 处理fd的可读事件
   void handleRead(Timestamp receiveTime);
-  // 负责处理tcp连接的可写事件
+  // 处理fd的可写事件
   void handleWrite();
-  // 负责处理tcp连接的关闭事件
+  // 处理fd的close事件
   void handleClose();
+  // 处理fd上的error事件
   void handleError();
   // void sendInLoop(string&& message);
   void sendInLoop(const StringPiece& message);
   void sendInLoop(const void* message, size_t len);
+  // 在loop中注册的callback（关闭fd的写功能）
   void shutdownInLoop();
   // void shutdownAndForceCloseInLoop(double seconds);
+  // 关闭connection的主要函数（注册到loop中使用）
   void forceCloseInLoop();
   void setState(StateE s) { state_ = s; }
+  // 返回connection的state的char
   const char* stateToString() const;
   void startReadInLoop();
   void stopReadInLoop();
 
-  // 当前连接所在的loop中
+  // connection所在的loop
   EventLoop* loop_;
+  // connection的姓名
   const string name_;
-  // 标记当前connection的状态
+  // connection的状态
   StateE state_;  // FIXME: use atomic variable
+  // 是否关注read事件
   bool reading_;
   // we don't expose those classes to client.
-  // 当前连接server端accept得到的socket
+  // connection的socketfd
   std::unique_ptr<Socket> socket_;
-  // socket封装的channel
+  // connection的channel
   std::unique_ptr<Channel> channel_;
   const InetAddress localAddr_;
   const InetAddress peerAddr_;
-  // 连接建立（或关闭）后的处理函数
+  // 连接建立（或关闭）后的callback
   ConnectionCallback connectionCallback_;
-  // 收到消息后的处理函数
+  // read complete的callback
   MessageCallback messageCallback_;
-  // 消息发送后的处理函数
+  // write complete的callback
   WriteCompleteCallback writeCompleteCallback_;
   HighWaterMarkCallback highWaterMarkCallback_;
   // 连接关闭后的处理函数
   CloseCallback closeCallback_;
   size_t highWaterMark_;
-  // TCP连接对应的用户接收缓冲区
+  // TCP连接的输入缓冲区
   Buffer inputBuffer_;
+  // TCP连接的输出缓冲区
   Buffer outputBuffer_; // FIXME: use list<Buffer> as output buffer.
   boost::any context_;
   // FIXME: creationTime_, lastReceiveTime_

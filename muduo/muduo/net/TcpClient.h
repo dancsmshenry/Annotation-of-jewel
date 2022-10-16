@@ -70,17 +70,23 @@ class TcpClient : noncopyable
   /// Not thread safe, but in loop
   void removeConnection(const TcpConnectionPtr& conn);
 
+  // 对应的eventloop
   EventLoop* loop_;
+  // connector的ptr
   ConnectorPtr connector_; // avoid revealing Connector
+  // client的name
   const string name_;
   ConnectionCallback connectionCallback_;
   MessageCallback messageCallback_;
   WriteCompleteCallback writeCompleteCallback_;
+  // 失败时是否重连
   bool retry_;   // atomic
   bool connect_; // atomic
   // always in loop thread
+  // 对成功连接进行计数
   int nextConnId_;
   mutable MutexLock mutex_;
+  // tcpconnection的ptr
   TcpConnectionPtr connection_ GUARDED_BY(mutex_);
 };
 

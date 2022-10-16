@@ -43,6 +43,7 @@ class TimerQueue : noncopyable
   /// repeats if @c interval > 0.0.
   ///
   /// Must be thread safe. Usually be called from other threads.
+  // 添加callback到loop中
   TimerId addTimer(TimerCallback cb,
                    Timestamp when,
                    double interval);
@@ -69,8 +70,12 @@ class TimerQueue : noncopyable
 
   bool insert(Timer* timer);
 
+  // 对应的loop
   EventLoop* loop_;
+  // 时间事件fd（timerfd是Linux为用户程序提供的一个定时器接口。这个接口基于fd
+  // 通过fd的可读事件进行超时通知，所以能够被用于select/poll的应用场景）
   const int timerfd_;
+  // fd对应的channel
   Channel timerfdChannel_;
   // Timer list sorted by expiration
   TimerList timers_;

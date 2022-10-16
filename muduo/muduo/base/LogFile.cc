@@ -20,16 +20,16 @@ LogFile::LogFile(const string& basename,
                  int flushInterval,
                  int checkEveryN)
   : basename_(basename),
-    rollSize_(rollSize),
-    flushInterval_(flushInterval),
-    checkEveryN_(checkEveryN),
-    count_(0),
+    rollSize_(rollSize), // 一个文件的最大字节数
+    flushInterval_(flushInterval),  //  允许刷新的最大间隙
+    checkEveryN_(checkEveryN),  //  允许停留在buffer的最大日志数
+    count_(0),  //  当前写入的条数，最大为checkEveryN
     mutex_(threadSafe ? new MutexLock : NULL),
-    startOfPeriod_(0),
-    lastRoll_(0),
-    lastFlush_(0)
+    startOfPeriod_(0),  //  记录前一天的时间，以秒记录
+    lastRoll_(0), //  上一批rollfile的时间，以秒记录
+    lastFlush_(0) //  上一次刷新的时间，以秒记录
 {
-  assert(basename.find('/') == string::npos);
+  assert(basename.find('/') == string::npos); //  判断文件名是否合法
   rollFile();
 }
 
@@ -93,14 +93,18 @@ void LogFile::append_unlocked(const char* logline, int len)
 bool LogFile::rollFile()
 {
   time_t now = 0;
+  //  now得到的是当前的unix时间戳（是自1970年1月1日00:00:00 GMT以来的秒数）
   string filename = getLogFileName(basename_, &now);
+  // 计算当前是当天过了多少秒
   time_t start = now / kRollPerSeconds_ * kRollPerSeconds_;
 
+  // 如果当前的天数大于上次刷盘的时间
   if (now > lastRoll_)
   {
     lastRoll_ = now;
     lastFlush_ = now;
-    startOfPeriod_ = start;
+    startOfPeriod_ = start; //  记录上一次rollfile的日期（天）
+    // 换一个文件写日志（为保证两天的日志不写在同一个文件中 而上一天的日志可能并未写到rollSize_大小）
     file_.reset(new FileUtil::AppendFile(filename));
     return true;
   }
@@ -110,6 +114,7 @@ bool LogFile::rollFile()
 string LogFile::getLogFileName(const string& basename, time_t* now)
 {
   string filename;
+  // 为什么是64：日期在格式化为字符串后为64
   filename.reserve(basename.size() + 64);
   filename = basename;
 

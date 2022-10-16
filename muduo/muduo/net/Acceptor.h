@@ -38,7 +38,7 @@ class Acceptor : noncopyable
   void setNewConnectionCallback(const NewConnectionCallback& cb)
   { newConnectionCallback_ = cb; }
 
-  // 等价于socket中的listen（使socket进入listening的状态）
+  // 等价于socket中的listen
   void listen();
 
   bool listening() const { return listening_; }
@@ -48,18 +48,18 @@ class Acceptor : noncopyable
   // bool listenning() const { return listening(); }
 
  private:
-  // 当listening socket出现可读事件时调用的回调函数（处理新到的连接）
+  // 处理listenfd上的可读事件（接收新的连接）
   void handleRead();
 
-  // 指向main eventloop的指针
+  // 指向main eventloop的ptr
   EventLoop* loop_;
   // 用于listening的fd
   Socket acceptSocket_;
   // 用于listening的channel
   Channel acceptChannel_;
-  // 公平的将已经接受的fd给sub eventloop（可以理解为是负载均衡）
+  // 根据给定的fd，创建新的connection，并将其放入eventloop中
   NewConnectionCallback newConnectionCallback_;
-  // 用于标记当前的acceptor是否进入了listening状态
+  // 标记当前的acceptor是否进入了listening状态
   bool listening_;
   // fd，用于解决文件描述符不够的问题
   int idleFd_;

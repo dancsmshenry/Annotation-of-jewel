@@ -27,6 +27,7 @@ namespace net
 namespace detail
 {
 
+// 生成一个时间轮对应的事件fd
 int createTimerfd()
 {
   int timerfd = ::timerfd_create(CLOCK_MONOTONIC,
@@ -54,9 +55,11 @@ struct timespec howMuchTimeFromNow(Timestamp when)
   return ts;
 }
 
+// 读取timerfd的可读事件
 void readTimerfd(int timerfd, Timestamp now)
 {
   uint64_t howmany;
+  // 当定时器超时，read读事件发生即可读，返回超时次数（从上次调用timerfd_settime()启动开始或上次read成功读取开始）
   ssize_t n = ::read(timerfd, &howmany, sizeof howmany);
   LOG_TRACE << "TimerQueue::handleRead() " << howmany << " at " << now.toString();
   if (n != sizeof howmany)
@@ -73,6 +76,7 @@ void resetTimerfd(int timerfd, Timestamp expiration)
   memZero(&newValue, sizeof newValue);
   memZero(&oldValue, sizeof oldValue);
   newValue.it_value = howMuchTimeFromNow(expiration);
+  // 设置第一次超时时间和超时间隔
   int ret = ::timerfd_settime(timerfd, 0, &newValue, &oldValue);
   if (ret)
   {
@@ -95,16 +99,21 @@ TimerQueue::TimerQueue(EventLoop* loop)
     timers_(),
     callingExpiredTimers_(false)
 {
+  // 设置可读事件的回调函数
   timerfdChannel_.setReadCallback(
       std::bind(&TimerQueue::handleRead, this));
   // we are always reading the timerfd, we disarm it with timerfd_settime.
+  // 关注可读事件
   timerfdChannel_.enableReading();
 }
 
 TimerQueue::~TimerQueue()
 {
+  // 对事件不感兴趣（避免触发epoll）
   timerfdChannel_.disableAll();
+  // 从loop中移除channel
   timerfdChannel_.remove();
+  // 关闭时间时间fd
   ::close(timerfd_);
   // do not remove channel, since we're in EventLoop::dtor();
   for (const Entry& timer : timers_)
@@ -113,9 +122,9 @@ TimerQueue::~TimerQueue()
   }
 }
 
-TimerId TimerQueue::addTimer(TimerCallback cb,
-                             Timestamp when,
-                             double interval)
+TimerId TimerQueue::addTimer(TimerCallback cb,//  用户自定义回调  
+                             Timestamp when,//  何时被触发
+                             double interval)// 触发的时间间隙（小于0表示不重复触发）
 {
   Timer* timer = new Timer(std::move(cb), when, interval);
   loop_->runInLoop(

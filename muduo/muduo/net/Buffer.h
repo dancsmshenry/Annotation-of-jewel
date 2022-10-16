@@ -162,6 +162,7 @@ class Buffer : public muduo::copyable
     writerIndex_ = kCheapPrepend;
   }
 
+  // 通过该函数获取read得到的数据
   string retrieveAllAsString()
   {
     return retrieveAsString(readableBytes());

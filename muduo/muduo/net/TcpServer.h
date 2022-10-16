@@ -61,9 +61,9 @@ class TcpServer : noncopyable
   /// - 1 means all I/O in another thread.
   /// - N means a thread pool with N threads, new connections
   ///   are assigned on a round-robin basis.
-  // 用于设置pool中thread的数量（注意：这里应该是用户设置的，因为默认是单reactor）
+  // 设置poll的thread的数量（一般默认是单reactor）
   void setThreadNum(int numThreads);
-  // 也是由用户设置的，不过这里是指pool建好后需要调用的函数
+  // 设置thread的callback
   void setThreadInitCallback(const ThreadInitCallback& cb)
   { threadInitCallback_ = cb; }
   /// valid after calling start()
@@ -94,33 +94,38 @@ class TcpServer : noncopyable
 
  private:
   /// Not thread safe, but in loop
-  // acceptor的socket发生了可读事件后，就会调用该函数
+  // 出现新的connection（acceptor的fd发生了可读事件）
   void newConnection(int sockfd, const InetAddress& peerAddr);
   /// Thread safe.
-  // 将当前的connect移除（本质上是将removeConnectionInLoop放到runinloop中执行，因为要在该connect对应的loop中删除）
+  // 将当前的connection移除（注册remove connection callback到loop中）
   void removeConnection(const TcpConnectionPtr& conn);
   /// Not thread safe, but in loop
-  // 实际上移除connect的函数
+  // 实际上移除connection的callback
   void removeConnectionInLoop(const TcpConnectionPtr& conn);
 
   typedef std::map<string, TcpConnectionPtr> ConnectionMap;
 
   EventLoop* loop_;  // the acceptor loop
+  // 端口号
   const string ipPort_;
+  // server的name
   const string name_;
   // 指向acceptor的指针
   std::unique_ptr<Acceptor> acceptor_; // avoid revealing Acceptor
   // 用于实现多recator模式的线程池
   std::shared_ptr<EventLoopThreadPool> threadPool_;
+  // 创建connection时的ptr
   ConnectionCallback connectionCallback_;
   MessageCallback messageCallback_;
+  // write complete的callback
   WriteCompleteCallback writeCompleteCallback_;
-  // pool建好后调用的回调
+  // thread的callback
   ThreadInitCallback threadInitCallback_;
+  // 表示tcpserver是否开始start
   AtomicInt32 started_;
-  // 记录当前有多少fd（acceptor中的fd也算）
+  // 记录fd的数量（acceptor中的fd也包括）
   int nextConnId_;
-  // 存放当前server所有的连接（key为每个连接的姓名，value为连接的指针）
+  // 存放当前server所有的连接（key为每个连接的姓名，value为connection的指针）
   ConnectionMap connections_;
 };
 

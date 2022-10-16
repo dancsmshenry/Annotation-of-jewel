@@ -23,7 +23,8 @@ const size_t Buffer::kCheapPrepend;
 const size_t Buffer::kInitialSize;
 
 ssize_t Buffer::readFd(int fd, int* savedErrno)
-{ // 函数的巧妙之处在于，它能够一次性把所有的数据都读到缓冲区中
+{ 
+  // 函数的巧妙之处：它能够一次性把所有的数据都读到缓冲区中
   // saved an ioctl()/FIONREAD call to tell how much to read
   // 这里在栈上开辟了64kb的空间
   char extrabuf[65536];
@@ -41,11 +42,11 @@ ssize_t Buffer::readFd(int fd, int* savedErrno)
   // 调用readv函数读取数据（返回的是读到的总字节数；如果报错就返回-1）
   const ssize_t n = sockets::readv(fd, vec, iovcnt);
   if (n < 0)
-  {// 读数据发生错误
+  {// readv发生错误
     *savedErrno = errno;
   }
   else if (implicit_cast<size_t>(n) <= writable)
-  {// 读到的数据都放在第一个缓冲区buffer中
+  {// 得到的数据只在第一块缓冲区中
     writerIndex_ += n;
   }
   else

@@ -17,8 +17,11 @@
 using namespace muduo;
 using namespace muduo::net;
 
+// 不关注事件
 const int Channel::kNoneEvent = 0;
+// 关注读事件
 const int Channel::kReadEvent = POLLIN | POLLPRI;
+// 关注写事件
 const int Channel::kWriteEvent = POLLOUT;
 
 Channel::Channel(EventLoop* loop, int fd__)
@@ -39,7 +42,7 @@ Channel::~Channel()
   assert(!eventHandling_);
   assert(!addedToLoop_);
   if (loop_->isInLoopThread())
-  {// 析构之前要判断channel是否从loop中移除
+  {// 析构之前要判断channel是否已经从loop中移除
     assert(!loop_->hasChannel(this));
   }
 }
@@ -68,7 +71,7 @@ void Channel::handleEvent(Timestamp receiveTime)
 {
   std::shared_ptr<void> guard;
   if (tied_)
-  {
+  { //  ?????????????
     guard = tie_.lock();
     if (guard)
     {

@@ -28,7 +28,7 @@ class Channel;
 /// Base class for IO Multiplexing
 ///
 /// This class doesn't own the Channel objects.
-// 用作基类，分别给epoll和poll继承的，可以认为是一个接口
+// 抽象基类；epoll和poll继承
 class Poller : noncopyable
 {
  public:
@@ -50,7 +50,7 @@ class Poller : noncopyable
   /// Must be called in the loop thread.
   virtual void removeChannel(Channel* channel) = 0;
 
-  // 判断channel是否在epoll中
+  // 判断channel是否在poll中
   virtual bool hasChannel(Channel* channel) const;
 
   static Poller* newDefaultPoller(EventLoop* loop);
@@ -61,9 +61,9 @@ class Poller : noncopyable
   }
 
  protected:
-  // 为什么用map：能快速找到是否有channel
+  // 用map的原因：能快速找到是否含有channel
   typedef std::map<int, Channel*> ChannelMap;
-  // 一个fd和channel映射的map
+  // fd和channel映射的map
   ChannelMap channels_;
 
  private:

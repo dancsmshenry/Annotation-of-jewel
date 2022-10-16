@@ -40,7 +40,7 @@ class Channel : noncopyable
   Channel(EventLoop* loop, int fd);
   ~Channel();
 
-  // 处理channel上的事件（对外提供结构给eventloop使用）
+  // 处理channel上的事件（在eventloop的loop上被调用）
   void handleEvent(Timestamp receiveTime);
   void setReadCallback(ReadEventCallback cb)
   { readCallback_ = std::move(cb); }
@@ -53,6 +53,7 @@ class Channel : noncopyable
 
   /// Tie this channel to the owner object managed by shared_ptr,
   /// prevent the owner object being destroyed in handleEvent.
+  // 获取一个拥有该channel对象的weak_ptr
   void tie(const std::shared_ptr<void>&);
 
   int fd() const { return fd_; }
@@ -61,15 +62,11 @@ class Channel : noncopyable
   // int revents() const { return revents_; }
   bool isNoneEvent() const { return events_ == kNoneEvent; }
 
-  // 设置channel关注的事件
-
   void enableReading() { events_ |= kReadEvent; update(); }
   void disableReading() { events_ &= ~kReadEvent; update(); }
   void enableWriting() { events_ |= kWriteEvent; update(); }
   void disableWriting() { events_ &= ~kWriteEvent; update(); }
   void disableAll() { events_ = kNoneEvent; update(); }
-
-  // 判断当前的事件是否能读或写
 
   bool isWriting() const { return events_ & kWriteEvent; }
   bool isReading() const { return events_ & kReadEvent; }
@@ -94,7 +91,7 @@ class Channel : noncopyable
 
   // 把channel放入loop中（或是把修改后的channel放入loop中）
   void update();
-  // 真正处理channel上事件的函数（通过位运算switch）
+  // 实际处理channel上事件的函数（通过位运算switch对应的callback）
   void handleEventWithGuard(Timestamp receiveTime);
 
   static const int kNoneEvent;
@@ -111,7 +108,7 @@ class Channel : noncopyable
   int        revents_; // it's the received event types of epoll or poll
   // 当前的状态（默认是-1，-1表示还没有被放入到poll中，1表示已经放入，2表示被删除）
   int        index_;
-  // 表示是否要写关于pollup的日志（默认是true）
+  // 是否要写关于pollup的日志（默认是true）
   bool       logHup_;
 
   std::weak_ptr<void> tie_;
@@ -120,13 +117,13 @@ class Channel : noncopyable
   bool eventHandling_;
   // channel是否放入loop中（默认是false）
   bool addedToLoop_;
-  // 处理读事件
+  // 处理fd的读事件
   ReadEventCallback readCallback_;
-  // 处理写事件
+  // 处理fd的写事件
   EventCallback writeCallback_;
   // 处理fd的close
   EventCallback closeCallback_;
-  // 处理error
+  // 处理fd的error
   EventCallback errorCallback_;
 };
 

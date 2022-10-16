@@ -19,6 +19,7 @@
 using namespace muduo;
 using namespace muduo::net;
 
+// 最大重连间隔
 const int Connector::kMaxRetryDelayMs;
 
 Connector::Connector(EventLoop* loop, const InetAddress& serverAddr)
@@ -28,6 +29,7 @@ Connector::Connector(EventLoop* loop, const InetAddress& serverAddr)
     state_(kDisconnected),
     retryDelayMs_(kInitRetryDelayMs)
 {
+  // 这里没有init channel，因为只有连接成功的时候才会有一个有效的fd
   LOG_DEBUG << "ctor[" << this << "]";
 }
 
@@ -49,7 +51,7 @@ void Connector::startInLoop()
   assert(state_ == kDisconnected);
   if (connect_)
   {
-    connect();
+    connect();//  调用connect()（socket，connect）
   }
   else
   {
@@ -77,13 +79,14 @@ void Connector::stopInLoop()
 
 void Connector::connect()
 {
+  // 创建非阻塞套接字
   int sockfd = sockets::createNonblockingOrDie(serverAddr_.family());
   int ret = sockets::connect(sockfd, serverAddr_.getSockAddr());
   int savedErrno = (ret == 0) ? 0 : errno;
   switch (savedErrno)
   {
     case 0:
-    case EINPROGRESS:
+    case EINPROGRESS: //正在连接
     case EINTR:
     case EISCONN:
       connecting(sockfd);
@@ -161,6 +164,8 @@ void Connector::handleWrite()
 
   if (state_ == kConnecting)
   {
+    // 这里的connector需要释放掉socketfd对应的channel
+    // 因为fd可写就证明fd的建立成功了，那么就需要把fd转交给connectionptr
     int sockfd = removeAndResetChannel();
     int err = sockets::getSocketError(sockfd);
     if (err)
@@ -179,6 +184,7 @@ void Connector::handleWrite()
       setState(kConnected);
       if (connect_)
       {
+        // 这里实际上调用的·就是tcoclient的newconnection
         newConnectionCallback_(sockfd);
       }
       else
@@ -219,7 +225,7 @@ void Connector::retry(int sockfd)
     retryDelayMs_ = std::min(retryDelayMs_ * 2, kMaxRetryDelayMs);
   }
   else
-  {
+  {// 此时connect_被stop()设置为false，因此打印对应log
     LOG_DEBUG << "do not connect";
   }
 }

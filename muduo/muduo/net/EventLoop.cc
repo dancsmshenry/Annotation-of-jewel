@@ -198,6 +198,7 @@ TimerId EventLoop::runAt(Timestamp time, TimerCallback cb)
   return timerQueue_->addTimer(std::move(cb), time, 0.0);
 }
 
+// delays后调用 callback
 TimerId EventLoop::runAfter(double delay, TimerCallback cb)
 {
   Timestamp time(addTime(Timestamp::now(), delay));
